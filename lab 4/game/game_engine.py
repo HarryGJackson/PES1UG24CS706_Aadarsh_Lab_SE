@@ -10,26 +10,42 @@ WALL_COLOR = (90, 90, 110)
 GOAL_COLOR = (60, 200, 120)
 LOSE_COLOR = (230, 80, 80)
 HINT_COLOR = (190, 190, 205)
+BUTTON_COLOR = (58, 58, 72)
+BUTTON_HOVER = (78, 78, 96)
+
+# Difficulty presets. Harder levels tilt more sharply, have less
+# friction to slow the marble down, and give less time.
+DIFFICULTIES = {
+    "Easy":   {"tilt_strength": 0.45, "friction": 0.035, "time_limit_ms": 60000, "color": (60, 200, 120)},
+    "Medium": {"tilt_strength": 0.6,  "friction": 0.02,  "time_limit_ms": 45000, "color": (240, 190, 70)},
+    "Hard":   {"tilt_strength": 0.8,  "friction": 0.01,  "time_limit_ms": 25000, "color": (230, 80, 80)},
+}
 
 class GameEngine:
     def __init__(self, width, height):
         self.width = width
         self.height = height
 
-        self.tilt_strength = 0.6
-        self.friction = 0.02
         self.max_speed = 9
 
         self.walls = self._build_maze()
         self.goal_x, self.goal_y, self.goal_radius = width - 60, height - 60, 22
 
-        self.time_limit_ms = 45000
-
         self.font = pygame.font.SysFont("Arial", 26)
         self.title_font = pygame.font.SysFont("Arial", 52, bold=True)
-        self.small_font = pygame.font.SysFont("Arial", 20)
+        self.button_font = pygame.font.SysFont("Arial", 22, bold=True)
+        self.small_font = pygame.font.SysFont("Arial", 18)
+        self.tiny_font = pygame.font.SysFont("Arial", 15)
 
         self.quit_requested = False
+        self.set_difficulty("Medium")
+
+    def set_difficulty(self, name):
+        settings = DIFFICULTIES[name]
+        self.difficulty = name
+        self.tilt_strength = settings["tilt_strength"]
+        self.friction = settings["friction"]
+        self.time_limit_ms = settings["time_limit_ms"]
         self.reset()
 
     def reset(self):
@@ -59,14 +75,25 @@ class GameEngine:
 
     def handle_event(self, event):
         # Tilting is driven by the continuous mouse position (see
-        # handle_input); key presses are only used on the end screen.
-        if not self.game_over or event.type != pygame.KEYDOWN:
+        # handle_input); clicks and key presses are only used on the
+        # end screen to pick a difficulty for the next round or exit.
+        if not self.game_over:
             return
 
-        if event.key in (pygame.K_r, pygame.K_RETURN, pygame.K_SPACE):
-            self.reset()
-        elif event.key in (pygame.K_ESCAPE, pygame.K_q):
+        choice = None
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for label, action, rect in self._end_screen_buttons():
+                if rect.collidepoint(event.pos):
+                    choice = action
+        elif event.type == pygame.KEYDOWN:
+            keys = {pygame.K_1: "Easy", pygame.K_2: "Medium", pygame.K_3: "Hard",
+                    pygame.K_ESCAPE: "exit", pygame.K_q: "exit"}
+            choice = keys.get(event.key)
+
+        if choice == "exit":
             self.quit_requested = True
+        elif choice in DIFFICULTIES:
+            self.set_difficulty(choice)
 
     def handle_input(self):
         if self.game_over:
@@ -180,6 +207,9 @@ class GameEngine:
         timer_text = self.font.render(f"Time: {seconds_left}s", True, WHITE)
         screen.blit(timer_text, (10, 10))
 
+        level_text = self.font.render(self.difficulty, True, DIFFICULTIES[self.difficulty]["color"])
+        screen.blit(level_text, level_text.get_rect(topright=(self.width - 10, 10)))
+
         if self.game_over:
             self._render_end_screen(screen)
 
@@ -197,15 +227,45 @@ class GameEngine:
             detail = "The maze was not solved"
 
         cx, cy = self.width // 2, self.height // 2
-        panel = pygame.Rect(0, 0, 440, 200)
-        panel.center = (cx, cy + 5)
+        panel = pygame.Rect(0, 0, 480, 320)
+        panel.center = (cx, cy)
         pygame.draw.rect(screen, DARK, panel, border_radius=14)
         pygame.draw.rect(screen, color, panel, width=3, border_radius=14)
 
         lines = [
-            (self.title_font.render(title, True, color), cy - 50),
-            (self.font.render(detail, True, WHITE), cy + 10),
-            (self.small_font.render("Press R to play again  |  Esc to quit", True, HINT_COLOR), cy + 60),
+            (self.title_font.render(title, True, color), cy - 115),
+            (self.font.render(detail, True, WHITE), cy - 65),
+            (self.small_font.render("Choose a difficulty to play again", True, HINT_COLOR), cy - 25),
+            (self.tiny_font.render("or press 1 / 2 / 3  |  Esc to exit", True, HINT_COLOR), cy + 138),
         ]
         for surface, y in lines:
             screen.blit(surface, surface.get_rect(center=(cx, y)))
+
+        mouse_pos = pygame.mouse.get_pos()
+        for label, action, rect in self._end_screen_buttons():
+            hovered = rect.collidepoint(mouse_pos)
+            accent = DIFFICULTIES[action]["color"] if action in DIFFICULTIES else HINT_COLOR
+            pygame.draw.rect(screen, BUTTON_HOVER if hovered else BUTTON_COLOR, rect, border_radius=10)
+            pygame.draw.rect(screen, accent, rect, width=2, border_radius=10)
+
+            if action in DIFFICULTIES:
+                name = self.button_font.render(label, True, accent)
+                seconds = DIFFICULTIES[action]["time_limit_ms"] // 1000
+                sub = self.tiny_font.render(f"{seconds}s", True, HINT_COLOR)
+                screen.blit(name, name.get_rect(center=(rect.centerx, rect.centery - 9)))
+                screen.blit(sub, sub.get_rect(center=(rect.centerx, rect.centery + 14)))
+            else:
+                text = self.small_font.render(label, True, WHITE)
+                screen.blit(text, text.get_rect(center=rect.center))
+
+    def _end_screen_buttons(self):
+        # (label, action, rect) for each clickable button on the end screen
+        cx, cy = self.width // 2, self.height // 2
+        buttons = []
+        width, gap = 130, 16
+        left = cx - (3 * width + 2 * gap) // 2
+        for i, name in enumerate(DIFFICULTIES):
+            rect = pygame.Rect(left + i * (width + gap), cy + 2, width, 56)
+            buttons.append((name, name, rect))
+        buttons.append(("Exit", "exit", pygame.Rect(cx - 70, cy + 75, 140, 40)))
+        return buttons
