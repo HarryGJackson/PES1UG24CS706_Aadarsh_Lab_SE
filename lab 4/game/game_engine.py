@@ -1,6 +1,7 @@
 import pygame
 from .marble import Marble
 from .wall import Wall
+from .sounds import Sounds
 
 # Game Engine
 
@@ -36,6 +37,9 @@ class GameEngine:
         self.button_font = pygame.font.SysFont("Arial", 22, bold=True)
         self.small_font = pygame.font.SysFont("Arial", 18)
         self.tiny_font = pygame.font.SysFont("Arial", 15)
+
+        self.sounds = Sounds()
+        self.bounce_threshold = 1.5  # ignore gentle touches while resting on a wall
 
         self.quit_requested = False
         self.set_difficulty("Medium")
@@ -117,6 +121,7 @@ class GameEngine:
             self.game_over = True
             self.result = "timeout"
             self.end_elapsed_ms = self.time_limit_ms
+            self.sounds.play_timeout()
             return
 
         self.marble.vx *= (1 - self.friction)
@@ -131,7 +136,9 @@ class GameEngine:
         self.marble.x += self.marble.vx
         self.marble.y += self.marble.vy
 
-        self._resolve_wall_collisions()
+        impact = self._resolve_wall_collisions()
+        if impact > self.bounce_threshold:
+            self.sounds.play_bounce(impact)
 
         gx = self.goal_x - self.marble.x
         gy = self.goal_y - self.marble.y
@@ -140,10 +147,14 @@ class GameEngine:
             self.result = "solved"
             self.finish_time_ms = elapsed
             self.end_elapsed_ms = elapsed
+            self.sounds.play_win()
 
     def _resolve_wall_collisions(self):
+        # Returns the hardest impact speed this frame (0 if no wall was
+        # hit hard), used to decide whether to play the bounce sound.
         bounce = 0.3
         r = self.marble.radius
+        impact = 0
 
         for wall in self.walls:
             wall_rect = wall.rect()
@@ -187,8 +198,11 @@ class GameEngine:
             # Reflect only the part of the velocity heading into the wall.
             v_normal = self.marble.vx * nx + self.marble.vy * ny
             if v_normal < 0:
+                impact = max(impact, -v_normal)
                 self.marble.vx -= (1 + bounce) * v_normal * nx
                 self.marble.vy -= (1 + bounce) * v_normal * ny
+
+        return impact
 
     def render(self, screen):
         screen.fill(DARK)
