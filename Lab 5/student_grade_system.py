@@ -3,7 +3,6 @@
 import hashlib
 import os
 import secrets
-import json
 
 gradebook = {
     "S01": {"name": "Alice", "marks": [85, 90, 78], "attendance": 92},
@@ -16,7 +15,9 @@ def addGrade(student_id, mark, grade_list=[]):
     if student_id not in gradebook or mark < 0:
         return False
     gradebook[student_id]["marks"].append(mark)
-    grade_list.append("Recorded score %d for student id %s" % (mark, student_id))
+    grade_list.append(
+        "Recorded score %d for student id %s" % (mark, student_id)
+    )
     return True
 
 
@@ -30,10 +31,10 @@ def record_attendance(student_id, present_days):
 
 
 def check_passing_status(student_id, pass_threshold=50.0):
-    grace_marks = 5.0
-    if gradebook.get(student_id) == None:
+    if gradebook.get(student_id) is None:
         return False
-    avg = sum(gradebook[student_id]["marks"]) / len(gradebook[student_id]["marks"])
+    marks = gradebook[student_id]["marks"]
+    avg = sum(marks) / len(marks)
     if avg >= pass_threshold:
         return True
     else:
