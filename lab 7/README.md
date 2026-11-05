@@ -1,4 +1,4 @@
-# L6_L7_42 — Salon Booking
+# L7— Salon Booking
 
 Lab 7: Fuzz Testing
 
